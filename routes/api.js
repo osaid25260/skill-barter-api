@@ -2,6 +2,7 @@ const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const User = require('../models/User');
 const Request = require('../models/Request');
+const Message = require('../models/Message');
 const { writeLimiter } = require('../middleware/security');
 const { asyncHandler, AppError } = require('../utils/asyncHandler');
 
@@ -121,6 +122,59 @@ router.patch('/requests/:id', writeLimiter, [
   await request.save();
   res.json(request);
 }));
+// =====================================================
+// GET /api/messages/:requestId — fetch chat thread
+// =====================================================
+router.get(
+  '/messages/:requestId',
+  [param('requestId').isMongoId().withMessage('Invalid request ID')],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors);
+
+    const messages = await Message.find({ requestId: req.params.requestId })
+      .populate('senderId', 'name')
+      .sort({ createdAt: 1 })
+      .limit(500);
+
+    res.json({ data: messages });
+  })
+);
+
+// =====================================================
+// POST /api/messages — send a message
+// =====================================================
+router.post(
+  '/messages',
+  writeLimiter,
+  [
+    body('requestId').isMongoId().withMessage('Invalid request ID'),
+    body('senderId').isMongoId().withMessage('Invalid sender ID'),
+    body('text').trim().isLength({ min: 1, max: 1000 }).withMessage('Message 1-1000 chars')
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return validationErrorResponse(res, errors);
+
+    const { requestId, senderId, text } = req.body;
+
+    const request = await Request.findById(requestId);
+    if (!request) throw new AppError('Request not found', 404);
+
+    const fromIdStr = request.fromId.toString();
+    const toIdStr = request.toId.toString();
+    if (senderId !== fromIdStr && senderId !== toIdStr) {
+      throw new AppError('Not a participant in this swap', 403);
+    }
+    if (request.status !== 'accepted') {
+      throw new AppError('Swap not accepted yet', 400);
+    }
+
+    const message = await Message.create({ requestId, senderId, text });
+    await message.populate('senderId', 'name');
+    res.status(201).json(message);
+  })
+);
 
 // 404 for /api/*
 router.use((req, res) => {

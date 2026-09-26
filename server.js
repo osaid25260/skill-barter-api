@@ -34,9 +34,9 @@ app.use(compression());
 const allowedOrigins = process.env.CLIENT_URL.split(',').map((s) => s.trim());
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) {
-      return NODE_ENV === 'development' ? callback(null, true) : callback(new Error('Origin required'));
-    }
+    // Allow requests with no origin (direct browser navigation, curl, Postman, health checks)
+    if (!origin) return callback(null, true);
+    
     if (allowedOrigins.includes(origin)) return callback(null, true);
     logger.warn(`CORS blocked: ${origin}`);
     callback(new Error('Not allowed by CORS'));
