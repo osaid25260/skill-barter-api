@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Winston logger — production-grade structured logging.
  */
 const winston = require('winston');
