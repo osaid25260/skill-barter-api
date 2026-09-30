@@ -92,12 +92,12 @@ app.get('/health', (req, res) => {
   });
 });
 
-if (apiRoutes)  app.use('/api', apiLimiter, apiRoutes);
-if (prepRoutes) app.use('/api/prep', apiLimiter, prepRoutes);
-if (ragRoutes)  app.use('/api/rag', apiLimiter, ragRoutes);
 if (authRoutes) app.use('/api/auth', apiLimiter, authRoutes);
 if (syncRoutes) app.use('/api/sync', apiLimiter, syncRoutes);
+if (prepRoutes) app.use('/api/prep', apiLimiter, prepRoutes);
+if (ragRoutes)  app.use('/api/rag', apiLimiter, ragRoutes);
 if (aiRoutes)   app.use('/api/ai', apiLimiter, aiRoutes);
+if (apiRoutes)  app.use('/api', apiLimiter, apiRoutes);
 
 app.get('/', (req, res) => {
   res.json({
