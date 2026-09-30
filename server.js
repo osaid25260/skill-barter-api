@@ -5,13 +5,35 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const logger = require('./utils/logger');
 const { apiLimiter, mongoSanitize } = require('./middleware/security');
-const apiRoutes = require('./routes/api');
+
+function loadRoute(name) {
+  const filePath = path.join(__dirname, 'routes', name + '.js');
+  if (!fs.existsSync(filePath)) {
+    logger.warn(`Route skipped (not found): routes/${name}.js`);
+    return null;
+  }
+  try {
+    return require('./routes/' + name);
+  } catch (err) {
+    logger.error(`Failed to load routes/${name}.js: ${err.message}`);
+    return null;
+  }
+}
+
+const apiRoutes  = loadRoute('api');
+const prepRoutes = loadRoute('prep');
+const ragRoutes  = loadRoute('rag');
+const authRoutes = loadRoute('auth');
+const syncRoutes = loadRoute('sync');
+const aiRoutes   = loadRoute('ai');
 
 const REQUIRED_ENV = ['MONGO_URI', 'CLIENT_URL'];
-const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+const missing = REQUIRED_ENV.filter(k => !process.env[k]);
 if (missing.length) {
   logger.error(`Missing env vars: ${missing.join(', ')}`);
   process.exit(1);
@@ -28,21 +50,18 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: false
 }));
-
 app.use(compression());
 
-const allowedOrigins = process.env.CLIENT_URL.split(',').map((s) => s.trim());
+const allowedOrigins = process.env.CLIENT_URL.split(',').map(s => s.trim());
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (direct browser navigation, curl, Postman, health checks)
     if (!origin) return callback(null, true);
-    
     if (allowedOrigins.includes(origin)) return callback(null, true);
     logger.warn(`CORS blocked: ${origin}`);
     callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false,
   maxAge: 86400
 }));
@@ -73,28 +92,42 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.use('/api', apiLimiter, apiRoutes);
+if (apiRoutes)  app.use('/api', apiLimiter, apiRoutes);
+if (prepRoutes) app.use('/api/prep', apiLimiter, prepRoutes);
+if (ragRoutes)  app.use('/api/rag', apiLimiter, ragRoutes);
+if (authRoutes) app.use('/api/auth', apiLimiter, authRoutes);
+if (syncRoutes) app.use('/api/sync', apiLimiter, syncRoutes);
+if (aiRoutes)   app.use('/api/ai', apiLimiter, aiRoutes);
 
 app.get('/', (req, res) => {
-  res.json({ name: 'Skill Barter Hub API', version: '1.0.0', docs: '/health' });
+  res.json({
+    name: 'My Board Prep API',
+    version: '1.0.0',
+    docs: '/health',
+    routes: {
+      api: !!apiRoutes,
+      prep: !!prepRoutes,
+      rag: !!ragRoutes,
+      auth: !!authRoutes,
+      sync: !!syncRoutes,
+      ai: !!aiRoutes
+    }
+  });
 });
 
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 
 app.use((err, req, res, next) => {
   if (err.message === 'Not allowed by CORS' || err.message === 'Origin required') {
     return res.status(403).json({ error: 'CORS: origin not allowed' });
   }
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON body' });
-  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Payload too large (max 50kb)' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Payload too large' });
   if (err.isOperational) return res.status(err.statusCode).json({ error: err.message });
   if (err.name === 'ValidationError') {
-    return res.status(400).json({ error: 'Validation failed', details: Object.values(err.errors).map((e) => e.message) });
+    return res.status(400).json({ error: 'Validation failed', details: Object.values(err.errors).map(e => e.message) });
   }
   if (err.name === 'CastError') return res.status(400).json({ error: `Invalid ${err.path}` });
-
   logger.error('Unhandled error', { message: err.message, stack: err.stack, requestId: req.id });
   res.status(500).json({ error: 'Internal server error' });
 });
@@ -115,7 +148,7 @@ async function connectDB(retries = 5) {
         logger.error('All retries failed. Exiting.');
         process.exit(1);
       }
-      await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
+      await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
     }
   }
 }
