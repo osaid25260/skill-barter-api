@@ -7,7 +7,7 @@ const { asyncHandler, AppError } = require('../utils/asyncHandler');
 const router = express.Router();
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.1-70b-versatile';
+const GROQ_MODEL = 'openai/gpt-oss-120b';
 
 function extractKeywords(text) {
   const stopWords = new Set(['what', 'which', 'when', 'where', 'how', 'why', 'the', 'and', 'or', 'is', 'are', 'was', 'were', 'this', 'that', 'these', 'those', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'about', 'kya', 'kaise', 'kab', 'kahan', 'kyun', 'hai', 'hain', 'mein', 'ki', 'ka', 'ke', 'se', 'aur']);
